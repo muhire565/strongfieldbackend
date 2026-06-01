@@ -254,8 +254,13 @@ export const recordPayment = async (req, res, next) => {
       p_reference: reference_number || null,
       p_received_by: userId
     });
-    
+
+    console.log('record_payment RPC result:', { data, error });
+
     if (error) throw error;
+    if (!data) {
+      return res.json({ success: true, data: { new_balance: 0, status: 'unknown', sale_number: '' } });
+    }
 
     // Notification: payment received or balance cleared
     if (data?.sale_number) {
