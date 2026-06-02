@@ -64,12 +64,18 @@ export const login = async (req, res, next) => {
       return res.status(401).json({ success: false, error: 'Invalid credentials' });
     }
 
+    // Update last_active on login
+    await supabaseAdmin
+      .from('profiles')
+      .update({ last_active: new Date().toISOString() })
+      .eq('id', profile.id);
+
     return res.json({
       success: true,
       data: {
         session: authData.session,
         user: authData.user,
-        profile: profile
+        profile: { ...profile, last_active: new Date().toISOString() }
       }
     });
 

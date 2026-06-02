@@ -21,6 +21,7 @@ const updateUserSchema = z.object({
     password: z.string().min(6).optional(),
     role: z.enum(['sales', 'stock_manager']).optional(),
     full_name: z.string().min(2).optional(),
+    is_active: z.boolean().optional(),
   })
 });
 
@@ -31,5 +32,7 @@ router.get('/', usersController.getUsers);
 router.post('/', validate(createUserSchema), usersController.createUser);
 router.patch('/:id', validate(updateUserSchema), usersController.updateUser);
 router.delete('/:id', usersController.deactivateUser);
+router.patch('/:id/activate', usersController.activateUser);
+router.patch('/:id/track', usersController.trackActivity);
 
 export default router;

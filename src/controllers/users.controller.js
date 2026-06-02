@@ -4,10 +4,10 @@ import { insertNotification } from './notifications.controller.js';
 export const getUsers = async (req, res, next) => {
   try {
     const { branch_id } = req.profile;
-    
+
     const { data, error } = await supabaseAdmin
       .from('profiles')
-      .select('id, username, role, full_name, is_active, created_at')
+      .select('id, username, role, full_name, is_active, last_active, created_at')
       .eq('branch_id', branch_id)
       .order('created_at', { ascending: false });
 
@@ -72,9 +72,13 @@ export const createUser = async (req, res, next) => {
 
 export const updateUser = async (req, res, next) => {
   try {
-    // Implement patch for password via supabaseAdmin if needed, or just profile updates
     const { id } = req.params;
     const { password, ...profileUpdates } = req.body;
+
+    // Prevent changing own role or status through this endpoint
+    if (id === req.profile.id && (profileUpdates.role || profileUpdates.is_active !== undefined)) {
+      return res.status(403).json({ success: false, error: 'Cannot modify your own role or status' });
+    }
 
     if (password) {
       const { error: pwdErr } = await supabaseAdmin.auth.admin.updateUserById(id, { password });
@@ -84,12 +88,12 @@ export const updateUser = async (req, res, next) => {
     if (Object.keys(profileUpdates).length > 0) {
       const { data, error } = await supabaseAdmin
         .from('profiles')
-        .update(profileUpdates)
+        .update({ ...profileUpdates, updated_at: new Date().toISOString() })
         .eq('id', id)
         .eq('branch_id', req.profile.branch_id)
         .select()
         .single();
-        
+
       if (error) return res.status(400).json({ success: false, error: error.message });
       return res.json({ success: true, data });
     }
@@ -103,12 +107,52 @@ export const updateUser = async (req, res, next) => {
 export const deactivateUser = async (req, res, next) => {
   try {
     const { id } = req.params;
+    if (id === req.profile.id) {
+      return res.status(403).json({ success: false, error: 'Cannot deactivate yourself' });
+    }
+
     const { data, error } = await supabaseAdmin
       .from('profiles')
-      .update({ is_active: false })
+      .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq('id', id)
       .eq('branch_id', req.profile.branch_id)
       .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const activateUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .update({ is_active: true, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('branch_id', req.profile.branch_id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const trackActivity = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .update({ last_active: new Date().toISOString() })
+      .eq('id', id)
+      .eq('branch_id', req.profile.branch_id)
+      .select('id, last_active')
       .single();
 
     if (error) throw error;
