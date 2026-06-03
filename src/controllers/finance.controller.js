@@ -284,7 +284,7 @@ export const listPurchases = async (req, res, next) => {
 
     let query = supabaseAdmin
       .from('goods_purchases')
-      .select('*, recorded_by_user:profiles!goods_purchases_recorded_by_fkey(full_name)', { count: 'exact' })
+      .select('*, recorded_by_user:profiles!goods_purchases_recorded_by_fkey(full_name), purchase_items(count)', { count: 'exact' })
       .eq('branch_id', branchId)
       .order('purchase_date', { ascending: false });
 
@@ -306,14 +306,14 @@ export const recordPurchase = async (req, res, next) => {
   try {
     const branchId = req.profile.branch_id;
     const userId = req.user.id;
-    const { supplier_name, supplier_contact, description, total_amount, amount_paid, payment_mode, reference_number, purchase_date } = req.body;
+    const { supplier_id, supplier_name, supplier_contact, items, amount_paid, payment_mode, reference_number, purchase_date } = req.body;
 
     const { data, error } = await supabaseAdmin.rpc('record_goods_purchase', {
       p_branch_id: branchId,
-      p_supplier_name: supplier_name,
+      p_supplier_id: supplier_id || null,
+      p_supplier_name: supplier_name || null,
       p_supplier_contact: supplier_contact || null,
-      p_description: description,
-      p_total_amount: total_amount,
+      p_items: items || [],
       p_amount_paid: amount_paid || 0,
       p_payment_mode: payment_mode || null,
       p_reference_number: reference_number || null,
@@ -340,7 +340,7 @@ export const getPurchaseDetail = async (req, res, next) => {
     const { id } = req.params;
     const { data, error } = await supabaseAdmin
       .from('goods_purchases')
-      .select('*, recorded_by_user:profiles!goods_purchases_recorded_by_fkey(full_name)')
+      .select('*, recorded_by_user:profiles!goods_purchases_recorded_by_fkey(full_name), purchase_items(*)')
       .eq('id', id)
       .eq('branch_id', branchId)
       .single();
@@ -452,6 +452,155 @@ export const getCashflow = async (req, res, next) => {
     });
 
     res.json({ success: true, data: Object.values(daily) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Suppliers
+export const listSuppliers = async (req, res, next) => {
+  try {
+    const branchId = req.profile.branch_id;
+    const search = cleanQueryParam(req.query.search);
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 100);
+
+    let query = supabaseAdmin
+      .from('suppliers')
+      .select('*', { count: 'exact' })
+      .eq('branch_id', branchId)
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (search) query = query.ilike('name', `%${search}%`);
+
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+    const { data, error, count } = await query.range(from, to);
+    if (error) throw error;
+    res.json({ success: true, data, count, page, limit });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const createSupplier = async (req, res, next) => {
+  try {
+    const branchId = req.profile.branch_id;
+    const { name, contact, email, address, notes } = req.body;
+    const { data, error } = await supabaseAdmin
+      .from('suppliers')
+      .insert({ branch_id: branchId, name, contact, email, address, notes })
+      .select()
+      .single();
+    if (error) throw error;
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getSupplierDetail = async (req, res, next) => {
+  try {
+    const branchId = req.profile.branch_id;
+    const { id } = req.params;
+    const { data: supplier, error: serr } = await supabaseAdmin
+      .from('suppliers')
+      .select('*')
+      .eq('id', id)
+      .eq('branch_id', branchId)
+      .single();
+    if (serr) throw serr;
+
+    const { data: purchases, error: perr } = await supabaseAdmin
+      .from('goods_purchases')
+      .select('*, purchase_items(*)')
+      .eq('supplier_id', id)
+      .eq('branch_id', branchId)
+      .order('purchase_date', { ascending: false });
+    if (perr) throw perr;
+
+    // Fetch supplier payment transactions
+    const { data: payments, error: txnErr } = await supabaseAdmin
+      .from('finance_transactions')
+      .select('id, transaction_date, amount, payment_mode, description, reference_id, created_at')
+      .eq('branch_id', branchId)
+      .eq('reference_type', 'supplier_payment')
+      .ilike('description', `%${supplier.name}%`)
+      .order('transaction_date', { ascending: false });
+    if (txnErr) throw txnErr;
+
+    // Build unified statement (oldest first for running balance)
+    const events = [];
+    for (const p of purchases || []) {
+      events.push({
+        date: p.purchase_date,
+        type: 'purchase',
+        reference: p.purchase_number,
+        description: p.description || 'Purchase',
+        amount: parseFloat(p.total_amount) || 0,
+        paid: parseFloat(p.amount_paid) || 0,
+        balance_due: parseFloat(p.balance_due) || 0,
+        status: p.payment_status,
+        items: p.purchase_items || [],
+      });
+    }
+    for (const t of payments || []) {
+      events.push({
+        date: t.transaction_date ? t.transaction_date.split('T')[0] : t.created_at.split('T')[0],
+        type: 'payment',
+        reference: t.reference_id || `TXN-${t.id}`,
+        description: t.description || 'Supplier payment',
+        amount: parseFloat(t.amount) || 0,
+        payment_mode: t.payment_mode,
+      });
+    }
+    events.sort((a, b) => {
+      const d = new Date(a.date) - new Date(b.date);
+      return d !== 0 ? d : (a.type === 'purchase' ? -1 : 1);
+    });
+
+    let runningBalance = 0;
+    const statement = events.map(e => {
+      if (e.type === 'purchase') {
+        runningBalance += e.amount;
+        return { ...e, running_balance: runningBalance };
+      } else {
+        runningBalance -= e.amount;
+        return { ...e, running_balance: runningBalance };
+      }
+    });
+
+    res.json({ success: true, data: { supplier, purchases, payments, statement } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const supplierPayment = async (req, res, next) => {
+  try {
+    const branchId = req.profile.branch_id;
+    const userId = req.user.id;
+    const { id } = req.params;
+    const { amount, payment_mode, reference_number } = req.body;
+
+    const { data, error } = await supabaseAdmin.rpc('supplier_make_payment', {
+      p_branch_id: branchId,
+      p_supplier_id: id,
+      p_amount: amount,
+      p_payment_mode: payment_mode,
+      p_reference_number: reference_number || null,
+      p_performed_by: userId,
+    });
+
+    if (error) throw error;
+    if (!data?.success) {
+      const err = new Error(data?.error || 'Payment failed');
+      err.status = 400;
+      err.response = { data };
+      throw err;
+    }
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }

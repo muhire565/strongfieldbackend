@@ -29,6 +29,12 @@ router.get('/purchases', financeController.listPurchases);
 router.post('/purchases', authorize('admin'), financeController.recordPurchase);
 router.get('/purchases/:id', financeController.getPurchaseDetail);
 
+// Suppliers
+router.get('/suppliers', financeController.listSuppliers);
+router.post('/suppliers', authorize('admin'), financeController.createSupplier);
+router.get('/suppliers/:id', financeController.getSupplierDetail);
+router.post('/suppliers/:id/payments', authorize('admin'), financeController.supplierPayment);
+
 // Transactions Ledger
 router.get('/transactions', financeController.listTransactions);
 router.get('/transactions/:id', financeController.getTransactionDetail);
