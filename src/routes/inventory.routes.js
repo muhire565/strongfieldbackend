@@ -15,8 +15,8 @@ router.get('/movements/all', inventoryController.getAllMovements);
 router.get('/:id', inventoryController.getOne);
 router.get('/:id/movements', inventoryController.getMovements);
 
-// Write endpoints (Admin only)
-router.post('/:id/stock-in', authorize('admin'), inventoryController.stockIn);
-router.post('/:id/stock-out', authorize('admin'), inventoryController.stockOut);
+// Write endpoints (Admin + Stock Manager)
+router.post('/:id/stock-in', authorize(['admin', 'stock_manager']), inventoryController.stockIn);
+router.post('/:id/stock-out', authorize(['admin', 'stock_manager']), inventoryController.stockOut);
 
 export default router;

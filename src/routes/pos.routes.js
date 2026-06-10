@@ -16,12 +16,12 @@ router.patch('/clients/:id', authorize('admin'), posController.updateClient);
 
 // Sales
 router.get('/sales', posController.listSales);
-router.post('/sales', authorize('admin'), posController.createSale);
+router.post('/sales', authorize(['admin', 'sales']), posController.createSale);
 router.get('/sales/:id', posController.getSaleDetails);
 router.patch('/sales/:id/void', authorize('admin'), posController.voidSale);
 
 // Payments (installments)
-router.post('/sales/:id/payments', authorize('admin'), posController.recordPayment);
+router.post('/sales/:id/payments', authorize(['admin', 'sales']), posController.recordPayment);
 router.get('/sales/:id/payments', posController.getSalePayments);
 
 // Quotations

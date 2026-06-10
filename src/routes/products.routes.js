@@ -30,14 +30,14 @@ router.get('/:id', authenticate, productsController.getOne);
 router.post(
   '/',
   authenticate,
-  authorize('admin'),
+  authorize(['admin', 'stock_manager']),
   validate(createProductSchema),
   productsController.create
 );
 router.put(
   '/:id',
   authenticate,
-  authorize('admin'),
+  authorize(['admin', 'stock_manager']),
   validate(updateProductSchema),
   productsController.update
 );
