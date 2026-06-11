@@ -35,7 +35,7 @@ export const login = async (req, res, next) => {
 
     const { data: profile, error: profileErr } = await supabaseAdmin
       .from('profiles')
-      .select('id, username, role, is_active, branch_id')
+      .select('id, username, role, is_active, branch_id, is_blocked, block_reason')
       .eq('username', username)
       .eq('branch_id', branchData.id)
       .single();
@@ -43,6 +43,10 @@ export const login = async (req, res, next) => {
     if (profileErr || !profile || !profile.is_active) {
       console.error('Login Error - Profile error or inactive:', profileErr || 'Profile inactive or not found');
       return res.status(401).json({ success: false, error: 'Invalid credentials or inactive user' });
+    }
+
+    if (profile.is_blocked) {
+      return res.status(403).json({ success: false, error: profile.block_reason || 'Your account has been blocked by the developer.' });
     }
 
     // c. Use profile's linked auth.users email... but we only have user ID.

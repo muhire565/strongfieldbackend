@@ -15,6 +15,7 @@ import posRoutes from './routes/pos.routes.js';
 import financeRoutes from './routes/finance.routes.js';
 import reportsRoutes from './routes/reports.routes.js';
 import notificationsRoutes from './routes/notifications.routes.js';
+import developerRoutes from './routes/developer.routes.js';
 
 const app = express();
 
@@ -51,6 +52,7 @@ app.use('/api/pos', posRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/developer', developerRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
